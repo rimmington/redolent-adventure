@@ -4,84 +4,86 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LiberalTypeSynonyms #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE RoleAnnotations #-}
-{-# LANGUAGE IncoherentInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Lib where
 
-import Control.Monad.Except (MonadError, throwError, catchError)
-import Data.OpenUnion
+import Control.Arrow (left)
+import Control.Monad ((<=<))
+import Control.Monad.Except
+import Control.Monad.Trans
+import Data.OpenUnion hiding ((:<))
+import qualified Data.OpenUnion as OU
 -- import Data.Type.List
 import Data.Typeable (Typeable, Proxy (Proxy))
 import Data.Void (Void)
 import GHC.Prim (Constraint, coerce)
 
--- class Embed a b where
---     embed :: a -> b
+class (MonadError e m, MonadError e' m') => MonadErrorMap e m e' m' | e m' -> m where
+    emap :: (e -> e') -> m a -> m' a
 
--- instance Embed a (Either a b) where
---     embed = Left
+instance (Monad m) => MonadErrorMap e (ExceptT e m) e' (ExceptT e' m) where
+    emap = withExceptT
 
--- instance Embed b (Either a b) where
---     embed = Right
+-- instance (Monad m, MonadError e' (t m), MonadTrans t) => MonadErrorMap e (ExceptT e m) e' (t m) where
+--     emap f = go <=< lift . runExceptT where
+--         go :: forall m' a. (MonadError e' m') => (Either e a) -> m' a
+--         go = either (throwError . f) pure
 
--- class (MonadError es m, Find e es ~ True) => Throws e m where
---     embed :: e -> es
+instance MonadErrorMap e (Either e) e' (Either e') where
+    emap = left
 
--- class ThrowsAll (s :: [*]) m where
---     throw :: ('[e] :< s, Typeable e) => e -> m a
+type family (:∈) (x :: *) (ys :: [*]) :: Constraint where
+    x :∈ '[y] = (x ~ y)
+    x :∈ (x ': ys) = ()
+    x :∈ (y ': ys) = x :∈ ys
 
--- type family AsEither (es :: [*]) where
---     AsEither '[x]      = x
---     AsEither (x ': xs) = Either x (AsEither xs)
+type family (:<) (s :: [*]) (s' :: [*]) :: Constraint where
+    '[]      :< s'        = ()
+    (a ': s) :< s'        = (s :< s', a :∈ s', Typeable a)
 
--- type family Contains e (es :: [*]) :: Constraint where
---     Contains e '[e']         = (e ~ e')
---     Contains e (e ': y ': z) = ()
---     Contains e (x ': y ': z) = Contains e (y ': z)
+instance (s :< s') => (OU.:<) s s'
 
--- instance (MonadError (Union s) m) => ThrowsAll s m where
---     throw = throwError . liftUnion
+throw :: (MonadError (Union s) m, e :∈ s, Typeable e) => e -> m a
+throw = throwError . liftUnion
 
-throwU :: (MonadError (Union s) m, '[e] :< s, Throws e, Typeable e) => e -> m a
-throwU = throwError . liftUnion
+rethrow :: (MonadErrorMap (Union s) m (Union s') m', Typeable e, Typeable e', e :∈ s, (s :\ e) :< s', e' :∈ s') => (e -> e') -> m a -> m' a
+rethrow f = emap f' where
+    f' s = case restrict s of
+        Left  u -> reUnion u
+        Right e -> liftUnion $ f e
 
-handle :: forall a e m. (MonadError e m) => (Throws e => m a) -> (e -> m a) -> m a
-handle = catchError . unthrow (Proxy :: Proxy e)
+singleError :: (MonadErrorMap (Union '[e]) m e m', Typeable e) => m a -> m' a
+singleError = emap $ id @> typesExhausted
 
-handleU :: forall a e m s. (MonadError (Union s) m, '[e] :< s, Typeable e) => (Throws e => m a) -> (e -> m a) -> m a
-handleU m f = unthrow (Proxy :: Proxy e) $ catchError m go where
-    go s | Right e <- restrict s = f e
-         | otherwise             = throwError s
+liftError :: (MonadErrorMap e m (Union s) m', e :∈ s, Typeable e) => m a -> m' a
+liftError = emap liftUnion
 
-class Throws e where
-type role Throws representational
+type Throws e s m = (MonadError (Union s) m, e :∈ s)
 
-unthrow :: proxy e -> (Throws e => a) -> a
-unthrow _ = unWrap . coerceWrap . Wrap
+data MyError = MyError deriving (Show)
+data Another = Another deriving (Show)
 
-newtype Wrap e a = Wrap { unWrap :: Throws e => a }
+-- throwing :: (Throws MyError s m) => m ()
+throwing :: (MonadError (Union s) m, '[MyError] :< s) => m ()
+throwing = throw MyError
 
-coerceWrap :: Wrap e a -> Wrap (Catch e) a
-coerceWrap = coerce
+again :: (Throws MyError s m, Throws Another s m) => m ()
+again = throwing *> throw Another *> pure ()
 
-newtype Catch a = Catch a
-instance Throws (Catch e) where
+discardAnother :: Another -> MyError
+discardAnother = const MyError
 
--- type Throws e m = forall s. (MonadError (Union s) m, '[e] :< s)
+-- catching :: Either MyError ()
+-- catching = runExcept $ singleError $ rethrow (\(x :: Another) -> MyError) again
 
--- instance (MonadError (Union s) m, ) => ThrowsAll (x ': y ': z) m where
---     throw = undefined
+-- handle m f = catchError m go where
+--     go s | Right e <- restrict s = f e
+--          | otherwise             = throwError $ reUnion s
 
--- handle :: forall es e a. (Find e es ~ True) => (e -> a) -> (ThrowsAll es m => m a) -> (ThrowsAll (Remove e es) m => m a)
--- handle = undefined
-
--- type Throws e m = (Find e es ~ True, ThrowsAll es m)
-
--- instance (Throws e' m, Embed e e') => Throws e m where
---     throw = throw . embed
