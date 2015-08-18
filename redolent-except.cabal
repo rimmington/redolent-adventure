@@ -1,13 +1,12 @@
 name:                redolent-except
 version:             0.1.0.0
-synopsis:            Initial project template from stack
+synopsis:            Experimenting with errors
 description:         Please see README.md
 homepage:            http://github.com/rimmington/redolent-except#readme
 license:             BSD3
 license-file:        LICENSE
-author:              Example Author Name
-maintainer:          example@example.com
-copyright:           2010 Author Here
+maintainer:          Rhys <rimmington@gmail.com>
+copyright:           (c) 2015 Rhys
 category:            Web
 build-type:          Simple
 -- extra-source-files:
