@@ -41,13 +41,13 @@ instance MonadErrorMap e (Either e) e' (Either e') where
 --     emap f = hoist $ emap f
 
 type family (:∈) (x :: *) (ys :: [*]) :: Constraint where
-    x :∈ '[y] = (x ~ y)
+    x :∈ '[y]      = (x ~ y)
     x :∈ (x ': ys) = ()
     x :∈ (y ': ys) = x :∈ ys
 
 type family (:⊆) (s :: [*]) (s' :: [*]) :: Constraint where
-    '[]      :⊆ s'        = ()
-    (a ': s) :⊆ s'        = (s :⊆ s', a :∈ s', Typeable a)
+    '[]      :⊆ s' = ()
+    (a ': s) :⊆ s' = (s :⊆ s', a :∈ s')
 
 instance (s :⊆ s') => s :< s'
 
