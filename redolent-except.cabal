@@ -17,7 +17,6 @@ library
   exposed-modules:     Control.Monad.Except.Union
   build-depends:       base >= 4.7 && < 5
                      , mtl
-                     , ghc-prim
                      , open-union
   default-language:    Haskell2010
   ghc-options:         -Wall

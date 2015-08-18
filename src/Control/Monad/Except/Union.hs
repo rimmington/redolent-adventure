@@ -8,6 +8,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE Trustworthy #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Control.Monad.Except.Union ( MonadErrorMap (emap), (:∈), (:⊆), Raises
@@ -16,12 +17,12 @@ module Control.Monad.Except.Union ( MonadErrorMap (emap), (:∈), (:⊆), Raises
                                   , E.Except, ExceptT
                                   , E.runExceptT, E.runExcept ) where
 
-import Control.Arrow (left)
-import Control.Monad.Except (MonadError, ExceptT, withExceptT, throwError)
-import qualified Control.Monad.Except as E
+import safe Control.Arrow (left)
+import safe Control.Monad.Except (MonadError, ExceptT, withExceptT, throwError)
+import safe qualified Control.Monad.Except as E
 import Data.OpenUnion ((:<), (:\), Union, (@>), reUnion, liftUnion, restrict, typesExhausted)
-import Data.Typeable (Typeable)
-import GHC.Prim (Constraint)
+import safe Data.Typeable (Typeable)
+import GHC.Exts (Constraint)
 
 class (MonadError e m, MonadError e' m') => MonadErrorMap e m e' m' | e m' -> m where
     emap :: (e -> e') -> m a -> m' a
