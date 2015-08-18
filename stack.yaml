@@ -6,4 +6,4 @@ packages:
     commit: 47b44026117137a1a06e7627771ccb97ecdab783
 extra-deps:
 - type-level-sets-0.5
-resolver: nightly-2015-07-30
+resolver: nightly-2015-07-23
