@@ -10,10 +10,10 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Control.Monad.Except.Union ( MonadErrorMap (emap), (:∈), (:⊆), Throws
-                                  , (@:), throw, unify, rethrow
-                                  , singleError, liftError
-                                  , E.Except, ExceptT, throwError
+module Control.Monad.Except.Union ( MonadErrorMap (emap), (:∈), (:⊆), Raises
+                                  , (@:), raise, raify, reraise
+                                  , singleError, raiseFrom
+                                  , E.Except, ExceptT
                                   , E.runExceptT, E.runExcept ) where
 
 import Control.Arrow (left)
@@ -51,26 +51,26 @@ type family (:⊆) (s :: [*]) (s' :: [*]) :: Constraint where
 
 instance (s :⊆ s') => s :< s'
 
-throw :: (MonadError (Union s) m, e :∈ s, Typeable e) => e -> m a
-throw = throwError . liftUnion
+raise :: (Raises e s m, Typeable e) => e -> m a
+raise = throwError . liftUnion
 
-unify :: ( MonadErrorMap (Union s) m (Union s') m'
+raify :: ( MonadErrorMap (Union s) m (Union s') m'
          , s ~ (e ': s')
          , (s' :\ e) :⊆ s'
          , Typeable e, Typeable e') =>
          (e -> e') -> m a -> m' a
-unify f = emap f' where
+raify f = emap f' where
     f' s = case restrict s of
         Left  u -> reUnion u
         Right e -> liftUnion $ f e
 
-rethrow :: ( MonadErrorMap (Union s) m (Union s') m'
+reraise :: ( MonadErrorMap (Union s) m (Union s') m'
            , s ~ (e ': (s' :\ e'))
            , e' :∈ s'
            , (s' :\ e' :\ e) :⊆ s'
            , Typeable e, Typeable e' ) =>
            (e -> e') -> m a -> m' a
-rethrow f = emap f' where
+reraise f = emap f' where
     f' s = case restrict s of
         Left  u -> reUnion u
         Right e -> liftUnion $ f e
@@ -82,7 +82,7 @@ infixr 2 @:
 singleError :: (MonadErrorMap (Union '[e]) m e m', Typeable e) => m a -> m' a
 singleError = emap $ id @> typesExhausted
 
-liftError :: (MonadErrorMap e m (Union s) m', e :∈ s, Typeable e) => m a -> m' a
-liftError = emap liftUnion
+raiseFrom :: (MonadErrorMap e m (Union s) m', e :∈ s, Typeable e) => m a -> m' a
+raiseFrom = emap liftUnion
 
-type Throws e s m = (MonadError (Union s) m, e :∈ s)
+type Raises e s m = (MonadError (Union s) m, e :∈ s)
