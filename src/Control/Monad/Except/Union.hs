@@ -12,7 +12,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Control.Monad.Except.Union ( MonadErrorMap (emap), (:∈), (:⊆), Raises
-                                  , (@:), raise, raify, reraise
+                                  , (@:), raise, raify, reraise, typesExhausted
                                   , singleError, raiseFrom
                                   , E.Except, ExceptT
                                   , E.runExceptT, E.runExcept ) where
@@ -20,7 +20,8 @@ module Control.Monad.Except.Union ( MonadErrorMap (emap), (:∈), (:⊆), Raises
 import safe Control.Arrow (left)
 import safe Control.Monad.Except (MonadError, ExceptT, withExceptT, throwError)
 import safe qualified Control.Monad.Except as E
-import Data.OpenUnion ((:<), (:\), Union, (@>), reUnion, liftUnion, restrict, typesExhausted)
+import Data.OpenUnion.Internal ( (:<), (:\), Union (Union), (@>)
+                               , liftUnion, restrict, typesExhausted )
 import safe Data.Typeable (Typeable)
 import GHC.Exts (Constraint)
 
@@ -52,29 +53,39 @@ type family (:⊆) (s :: [*]) (s' :: [*]) :: Constraint where
 
 instance (s :⊆ s') => s :< s'
 
+jiggle :: Union s -> Union t
+jiggle (Union s) = Union s
+
 raise :: (Raises e s m, Typeable e) => e -> m a
 raise = throwError . liftUnion
 
-raify :: ( MonadErrorMap (Union s) m (Union s') m'
+raify :: forall s m s' m' e e' a.
+         ( MonadErrorMap (Union s) m (Union s') m'
          , s ~ (e ': s')
-         , (s' :\ e) :⊆ s'
+         , e' :∈ s'
          , Typeable e, Typeable e') =>
          (e -> e') -> m a -> m' a
 raify f = emap f' where
     f' s = case restrict s of
-        Left  u -> reUnion u
+        Left  u -> rejig u
         Right e -> liftUnion $ f e
+    -- So there's no (s' :\ e) :⊆ s' constraint required on raify
+    rejig :: Union (s' :\ e) -> Union s'
+    rejig = jiggle
 
-reraise :: ( MonadErrorMap (Union s) m (Union s') m'
+reraise :: forall s m s' m' e e' a.
+           ( MonadErrorMap (Union s) m (Union s') m'
            , s ~ (e ': (s' :\ e'))
            , e' :∈ s'
-           , (s' :\ e' :\ e) :⊆ s'
            , Typeable e, Typeable e' ) =>
            (e -> e') -> m a -> m' a
 reraise f = emap f' where
     f' s = case restrict s of
-        Left  u -> reUnion u
+        Left  u -> rejig u
         Right e -> liftUnion $ f e
+    -- Removes (s' :\ e' :\ e) :⊆ s' constaint on reraise
+    rejig :: Union (s' :\ e' :\ e) -> Union s'
+    rejig = jiggle
 
 (@:) :: (s ~ (s :\ e), Typeable e) => (e -> e') -> (Union s -> e') -> Union (e ': s) -> e'
 r @: l = either l r . restrict
